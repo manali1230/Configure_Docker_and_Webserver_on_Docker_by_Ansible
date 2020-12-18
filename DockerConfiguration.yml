@@ -1,0 +1,87 @@
+- hosts: DockerServer
+  vars_prompt: 
+  -  name: foldername
+     prompt: " Enter your Directory Name "
+     private: no
+
+  tasks:
+  -  file:
+       state: directory
+       path: "{{foldername}}"
+
+  - mount:
+      src: "/dev/cdrom"
+      path: "{{foldername}}"
+      state: mounted
+      fstype: "iso9660"
+
+  - yum_repository:
+      baseurl: "{{foldername}}/AppStream"
+      name: "myappstream"
+      description: "My AppStream Packages"
+      gpgcheck: no
+
+  - yum_repository:
+      baseurl: https://download.docker.com/linux/centos/7/x86_64/stable/
+      name: "dockerrepo"
+      description: "My docker Packages"
+      gpgcheck: no
+
+  - yum_repository:
+      baseurl: "{{foldername}}/BaseOS"
+      name: "myBaseOS"
+      description: "My BaseOS Packages"
+      gpgcheck: no
+  - name: search docker
+    command: rpm -q docker-ce
+    register: x
+    ignore_errors: yes
+  - debug:
+      var: x
+
+  - name: install docker 
+    command: yum install docker-ce --nobest -y
+    when: x.rc != 0
+  
+  - pip:
+      name: docker-py
+
+  - name: start the service 
+    service:
+        name: docker
+        state: started
+        enabled: yes
+
+  - name: Pull an image
+    community.general.docker_image:
+      name: httpd
+      source: pull
+
+  - file:
+      dest: /http_files
+      state: directory
+
+  - template:
+      src: index.html
+      dest: /http_files/index.html
+
+  - name: Create a data container
+    community.general.docker_container:
+      name: webserver
+      image: httpd
+      state: started
+      exposed_ports: 
+      - 80
+      ports:
+      - 8080:80
+      volumes:
+      - /http_files:/usr/local/apache2/htdocs
+
+  - name: do not permit traffic in default zone on port 8080/tcp
+    firewalld:
+      port: 8080/tcp
+      permanent: yes
+      state: disabled
+
+
+
